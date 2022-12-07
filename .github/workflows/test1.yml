@@ -1,0 +1,73 @@
+on:
+  workflow_dispatch:
+  push:
+
+env:
+  NUM_JOBS: 3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: bcm2835
+            arch: arm
+            prefix: bcm2835
+            kernel: kernel
+
+          - name: arm64
+            arch: arm64
+            kernel: kernel8
+
+          - name: bcmrpi
+            arch: arm
+            config: bcm2711_defconfig
+            kernel: kernel
+
+          - name: bcm2709
+            arch: arm
+            config: bcm2709_defconfig
+            kernel: kernel7
+
+          - name: bcm2711
+            arch: arm 
+            config: bcm2711_defconfig
+            kernel: kernel7l
+
+          - name: bcm2711-arm64
+            arch: arm64
+            config: bcm2711_defconfig
+            kernel: kernel8
+    steps:
+      - run: |
+          mkdir install
+          touch install/{just,some,files,for,the,archive}
+
+      - name: Build kernel
+        run: |
+          export ARCH=${{matrix.arch}} KERNEL=${{matrix.kernel}} O=${{github.workspace}}/build CROSS_COMPILE=arm-linux-gnueabihf-
+          defconfig="defconfig"
+          image="zImage"
+
+          if [[ "$ARCH" == "arm64" ]]; then
+            export CROSS_COMPILE=aarch64-linux-gnu-
+            image="Image"
+          fi
+
+          if [[ "${{ matrix.prefix }}" != "" ]]; then
+            defconfig="${{ matrix.prefix }}_defconfig"
+          fi
+
+          echo mkdir ${{github.workspace}}/build
+          echo make $defconfig
+          echo make -j ${{env.NUM_JOBS}} $image modules dtbs
+          echo mkdir -p ${{github.workspace}}/install/boot
+          echo make INSTALL_MOD_PATH=${{github.workspace}}/install modules_install
+
+          echo cp ${O}/build/arch/${ARCH}/boot/dts/*.dtb ${{github.workspace}}/install/boot/
+          echo cp -r ${O}/arch/${ARCH}/boot/dts/overlays/*.dtb* ${{github.workspace}}/install/boot/
+          echo cp ${O}/arch/${ARCH}/boot/$image ${{github.workspace}}/install/boot/
+
+      - name: Tar build
+        run: tar -cvf ${{ matrix.prefix }}_build.tar -C ${{github.workspace}}/install .
